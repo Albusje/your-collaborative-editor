@@ -24,31 +24,9 @@ object OtEngine {
             op1 is Insert && op2 is Insert -> transformInsertInsert(op1, op2)
             op1 is Insert && op2 is Delete -> transformInsertDelete(op1, op2)
             op1 is Delete && op2 is Insert -> transformDeleteInsert(op1, op2)
-            op1 is Delete && op2 is Delete -> transformDeleteDelete(op1, op2)
             op1 is NoOp || op2 is NoOp -> op1 // If op2 is NoOp, op1 is unchanged; if op1 is NoOp, it remains NoOp.
             else -> throw IllegalArgumentException("Unsupported operation types for transformation: $op1 vs $op2")
         }
-    }
-
-    /**
-     * Composes two operations [op1] and [op2] into a single operation.
-     * Applying the composed operation should yield the same result as applying [op1] then [op2].
-     * This can be useful for reducing the number of operations, though it's optional for core OT.
-     *
-     * @param op1 The first operation.
-     * @param op2 The second operation to compose with [op1].
-     * @return A single operation that is equivalent to applying [op1] then [op2].
-     */
-    fun compose(op1: Operation, op2: Operation): Operation {
-        // This is more complex and depends on specific scenarios.
-        // For simplicity, you might initially just throw an error or not implement if not needed
-        // For example, if op1 is Insert(p1, t1) and op2 is Insert(p2, t2)
-        // If p1 <= p2, the new op will be Insert(p1, t1) + Insert(p2 + t1.length, t2)
-        // This is usually done by applying op1 to an empty string, then op2 to the result,
-        // and generating a single operation from the changes.
-        // A simpler approach for this project might be to just apply operations sequentially without composing.
-        // If you need to implement this, it's often done by converting ops to a common delta format.
-        throw UnsupportedOperationException("Compose is not implemented for this simplified example.")
     }
 
     // --- Private Transformation Helper Functions ---
@@ -93,62 +71,41 @@ object OtEngine {
     // If the delete position is after the insert, it's shifted right.
     // If the insert is within the deleted range, the delete needs to be adjusted.
     private fun transformDeleteInsert(op1: Delete, op2: Insert): Operation {
-        // Case 1: Insert is before delete. Shift delete position right.
-        if (op2.position <= op1.position) {
-            return op1.copy(position = op1.position + op2.text.length)
-        }
-        // Case 2: Insert is inside delete range. Extend delete length.
-        if (op2.position < op1.position + op1.length) {
-            // This is complex: the insert expands the document that the delete would operate on.
-            // The delete range needs to be adjusted to include the inserted text.
-            // Example: "abc", op1=Delete(1,1) (deletes 'b'). op2=Insert(1,"X") (inserts 'X' -> "aXbc")
-            // The original delete intended to delete 'b'. In the new "aXbc", 'b' is now at index 2.
-            // So op1 becomes Delete(2,1).
-            // This rule makes the delete delete 'X' if inserted before it, which might not be desired.
-            // A simpler approach for the transformDeleteInsert often involves splitting the delete or adjusting its range.
-            // Let's assume a simpler case where the delete position and length are just adjusted.
-            // If the insert is within the delete, the delete's length might increase.
-            return op1.copy(length = op1.length + op2.text.length)
-        }
-        // Case 3: Insert is after delete. No change needed for delete.
-        return op1
-    }
-
-    // Handles the transformation of a Delete operation against another Delete operation.
-    // If the delete regions overlap or are adjacent, the operations need careful adjustment.
-    private fun transformDeleteDelete(op1: Delete, op2: Delete): Operation {
-        // This is perhaps the most complex case as deletions can reduce the document length
-        // and shift subsequent operations.
-        // The goal is: what does op1 delete, given that op2 has *already* deleted its part?
-
         val op1Start = op1.position
         val op1End = op1.position + op1.length
-        val op2Start = op2.position
-        val op2End = op2.position + op2.length
+        val op2Pos = op2.position
+        val op2Length = op2.text.length
 
-        // Case 1: op1 is entirely before op2. Shift op1's position left by op2's length.
-        if (op1End <= op2Start) {
+        // if insert(op2) occurs before or at the start od the delete(op1)
+        // the delete position and possibly the length will shift right.
+        if (op2Pos <= op1Start){
+            // If op2 is entirely before op1, or at op1's start:
+            // Delete position shifts right by op2's length.
+            // Example: Doc "abcde", op1=Del(2,2) -> "abe". op2=Ins(1,"X") -> "aXcde"
+            // Transformed op1: Del(3,2) -> "aXbe" (deletes 'c' 'd')
+            val newPosition = op1Start + op2Length
+            val newLenght = op1.length // Length itself doesn't change relative to the inserted text if it's outside.
+
+            // However, if the insert is within the delete range, the delete's length must also expand.
+            // If op2Pos is within op1's original range (or exactly at op1Start), then op1's length should expand
+            // to cover the newly inserted text.
+            if (op2Pos >= op1Start && op2Pos < op1End) { // Insert is inside the delete range or exactly at its start.
+                return Delete(newPosition, op1.length + op2Length)
+            }
+            return Delete(newPosition, op1.length)
+        }
+        // If the insert (op2) occurs inside the delete (op1) but not at its very start.
+        // The delete's position remains unchanged, but its length extends to cover the inserted text.
+        else if (op2Pos < op1End) { // op2Pos > op1Start && op2Pos < op1End
+            // Insert is strictly inside the delete range.
+            // Example: Doc "abcde", op1=Del(1,3) ('bcd'). op2=Ins(2,"X") ('c') -> "abXce"
+            // Transformed op1: Del(1,4) ('bXcd') (original 'b', then 'X', then 'c', 'd')
+            return Delete(op1Start, op1.length + op2Length)
+        }
+        // If the insert (op2) occurs after the delete (op1).
+        // The delete operation is unaffected.
+        else { // op2Pos >= op1End
             return op1
-        }
-        // Case 2: op1 is entirely after op2. Shift op1's position left by op2's length.
-        if (op1Start >= op2End) {
-            return op1.copy(position = op1.position - op2.length)
-        }
-
-        // Case 3: op1 overlaps or contains op2.
-        // This is where it gets tricky. We need to find what part of op1 is NOT deleted by op2.
-
-        // Calculate the effective start of op1 after op2's deletion.
-        val newOp1Start = op1Start - (if (op1Start > op2Start) minOf(op1Start, op2End) - op2Start else 0)
-        // Calculate the effective end of op1 after op2's deletion.
-        val newOp1End = op1End - (if (op1End > op2Start) minOf(op1End, op2End) - op2Start else 0)
-
-        val newLength = newOp1End - newOp1Start
-
-        return if (newLength > 0) {
-            Delete(newOp1Start, newLength)
-        } else {
-            NoOp // The deletion has no effect after op2
         }
     }
 }
