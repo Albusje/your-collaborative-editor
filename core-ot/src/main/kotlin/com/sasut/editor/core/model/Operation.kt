@@ -1,8 +1,10 @@
 package com.sasut.editor.core.model
 // Data for operations (Insert, Delete, etc.)
 
+import java.io.Serializable
+
 // Represents a base operation type
-sealed interface Operation {
+sealed interface Operation : Serializable {
     /**
      * Applies this operation to a given document string.
      * @param document The string document to apply the operation to.

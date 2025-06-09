@@ -39,11 +39,11 @@ class OtEngineTest {
         }
 
         @Test
-        @DisplayName("Case 3: Insert A at same position as Insert B (tie-breaking: A after B) -> A's position shifts right by B's length")
-        fun `insertA_at_same_position_as_insertB_A_position_shifts`() {
+        @DisplayName("Case 3: Insert A at same position as Insert B (tie-breaking: A before B) -> A's position unchanged")
+        fun `insertA_at_same_position_as_insertB_A_position_unchanged`() {
             val opA = Insert(position = 2, text = "abc")
             val opB = Insert(position = 2, text = "xyz") // B inserts at same position as A
-            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = Insert(position = 2 + 3, text = "abc")) // 3 is length of "xyz"
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = Insert(position = 2, text = "abc")) // A stays at position 2 (before B)
         }
     }
 
@@ -121,14 +121,93 @@ class OtEngineTest {
         }
 
         @Test
-        @DisplayName("Case 4: Delete A starts before, Insert B is at Delete A's start -> A's position shifts right by B's length, length adjusted")
+        @DisplayName("Case 4: Delete A starts before, Insert B is at Delete A's start -> A's position shifts right, length unchanged")
         fun `deleteA_starts_before_insertB_at_start_A_position_shifts_right`() {
             val opA = Delete(position = 2, length = 5) // Deletes "cdefg"
             val opB = Insert(position = 2, text = "XY") // Inserts "XY" at 'c'
-            // Expected: original delete (cdefg) now applies to "XYcdefg" after insert.
-            // So, it should still delete from the same starting character's new position.
-            // In "abXYcdefg", "cdefg" is now at index 4. The delete should start at 4 and have its length increased by 2.
-            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = Delete(position = 2 + 2, length = 5 + 2))
+            // Expected: The delete operation should delete the same original characters
+            // After insert "XY" at position 2: "abXYcdefg"
+            // The original "cdefg" is now at positions 4-8, so delete should be Delete(4, 5)
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = Delete(position = 2 + 2, length = 5))
+        }
+    }
+
+    @Nested
+    @DisplayName("transformDeleteDelete")
+    inner class TransformDeleteDeleteTests {
+
+        @Test
+        @DisplayName("Case 1: Delete A completely before Delete B -> A unchanged")
+        fun `deleteA_before_deleteB_A_unchanged`() {
+            val opA = Delete(position = 2, length = 3) // Deletes positions 2-4
+            val opB = Delete(position = 6, length = 2) // Deletes positions 6-7
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = opA)
+        }
+
+        @Test
+        @DisplayName("Case 2: Delete A completely after Delete B -> A's position shifts left by B's length")
+        fun `deleteA_after_deleteB_A_position_shifts_left`() {
+            val opA = Delete(position = 6, length = 3) // Deletes positions 6-8
+            val opB = Delete(position = 2, length = 2) // Deletes positions 2-3
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = Delete(position = 6 - 2, length = 3))
+        }
+
+        @Test
+        @DisplayName("Case 3: Delete B completely contained within Delete A -> A's length reduces by B's length")
+        fun `deleteB_contained_in_deleteA_A_length_reduces`() {
+            val opA = Delete(position = 2, length = 6) // Deletes positions 2-7
+            val opB = Delete(position = 4, length = 2) // Deletes positions 4-5 (inside A)
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = Delete(position = 2, length = 6 - 2))
+        }
+
+        @Test
+        @DisplayName("Case 4: Delete A completely contained within Delete B -> A becomes NoOp")
+        fun `deleteA_contained_in_deleteB_A_becomes_noop`() {
+            val opA = Delete(position = 4, length = 2) // Deletes positions 4-5
+            val opB = Delete(position = 2, length = 6) // Deletes positions 2-7 (contains A)
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = NoOp)
+        }
+
+        @Test
+        @DisplayName("Case 5: Delete A starts before Delete B, partial overlap -> A deletes only non-overlapping part")
+        fun `deleteA_starts_before_deleteB_partial_overlap_A_keeps_non_overlap`() {
+            val opA = Delete(position = 2, length = 4) // Deletes positions 2-5
+            val opB = Delete(position = 4, length = 4) // Deletes positions 4-7
+            // Overlap is positions 4-5, so A should only delete positions 2-3
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = Delete(position = 2, length = 2))
+        }
+
+        @Test
+        @DisplayName("Case 6: Delete B starts before Delete A, partial overlap -> A moves to B's start and deletes remaining")
+        fun `deleteB_starts_before_deleteA_partial_overlap_A_moves_and_adjusts`() {
+            val opA = Delete(position = 4, length = 4) // Deletes positions 4-7
+            val opB = Delete(position = 2, length = 4) // Deletes positions 2-5
+            // Overlap is positions 4-5, so A should delete positions 6-7 but move to position 2
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = Delete(position = 2, length = 2))
+        }
+
+        @Test
+        @DisplayName("Case 7: Delete A and Delete B are identical -> A becomes NoOp")
+        fun `deleteA_identical_to_deleteB_A_becomes_noop`() {
+            val opA = Delete(position = 3, length = 4)
+            val opB = Delete(position = 3, length = 4)
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = NoOp)
+        }
+
+        @Test
+        @DisplayName("Edge case: Adjacent deletes (A ends where B starts) -> A unchanged")
+        fun `deleteA_adjacent_to_deleteB_A_unchanged`() {
+            val opA = Delete(position = 2, length = 3) // Deletes positions 2-4
+            val opB = Delete(position = 5, length = 2) // Deletes positions 5-6
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = opA)
+        }
+
+        @Test
+        @DisplayName("Edge case: Overlap results in zero-length delete -> becomes NoOp")
+        fun `overlap_results_in_zero_length_becomes_noop`() {
+            val opA = Delete(position = 3, length = 2) // Deletes positions 3-4
+            val opB = Delete(position = 2, length = 4) // Deletes positions 2-5 (completely covers A)
+            assertTransformed(op1 = opA, op2 = opB, expectedOp1Prime = NoOp)
         }
     }
 }

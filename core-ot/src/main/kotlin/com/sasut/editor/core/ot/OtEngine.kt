@@ -24,6 +24,7 @@ object OtEngine {
             op1 is Insert && op2 is Insert -> transformInsertInsert(op1, op2)
             op1 is Insert && op2 is Delete -> transformInsertDelete(op1, op2)
             op1 is Delete && op2 is Insert -> transformDeleteInsert(op1, op2)
+            op1 is Delete && op2 is Delete -> transformDeleteDelete(op1, op2)
             op1 is NoOp || op2 is NoOp -> op1 // If op2 is NoOp, op1 is unchanged; if op1 is NoOp, it remains NoOp.
             else -> throw IllegalArgumentException("Unsupported operation types for transformation: $op1 vs $op2")
         }
@@ -34,12 +35,12 @@ object OtEngine {
     // Handles the transformation of an Insert operation against another Insert operation.
     // If op1.position < op2.position, op1 is unaffected.
     // If op1.position > op2.position, op1.position is shifted by op2.text.length.
-    // If op1.position == op2.position, a tie-breaking rule is applied (e.g., op1 always comes after op2).
+    // If op1.position == op2.position, a tie-breaking rule is applied (op1 goes before op2).
     private fun transformInsertInsert(op1: Insert, op2: Insert): Operation {
         return when {
             op1.position < op2.position -> op1
             op1.position > op2.position -> op1.copy(position = op1.position + op2.text.length)
-            else -> op1.copy(position = op1.position + op2.text.length) // Tie-breaking: op1 appears after op2
+            else -> op1 // Tie-breaking: op1 appears before op2 (no position change)
         }
     }
 
@@ -76,36 +77,86 @@ object OtEngine {
         val op2Pos = op2.position
         val op2Length = op2.text.length
 
-        // if insert(op2) occurs before or at the start od the delete(op1)
-        // the delete position and possibly the length will shift right.
-        if (op2Pos <= op1Start){
-            // If op2 is entirely before op1, or at op1's start:
-            // Delete position shifts right by op2's length.
-            // Example: Doc "abcde", op1=Del(2,2) -> "abe". op2=Ins(1,"X") -> "aXcde"
-            // Transformed op1: Del(3,2) -> "aXbe" (deletes 'c' 'd')
-            val newPosition = op1Start + op2Length
-            val newLenght = op1.length // Length itself doesn't change relative to the inserted text if it's outside.
-
-            // However, if the insert is within the delete range, the delete's length must also expand.
-            // If op2Pos is within op1's original range (or exactly at op1Start), then op1's length should expand
-            // to cover the newly inserted text.
-            if (op2Pos >= op1Start && op2Pos < op1End) { // Insert is inside the delete range or exactly at its start.
-                return Delete(newPosition, op1.length + op2Length)
-            }
-            return Delete(newPosition, op1.length)
+        // Case 1: Insert occurs before the delete range
+        if (op2Pos < op1Start) {
+            // Delete position shifts right by insert length
+            return Delete(op1Start + op2Length, op1.length)
         }
-        // If the insert (op2) occurs inside the delete (op1) but not at its very start.
-        // The delete's position remains unchanged, but its length extends to cover the inserted text.
-        else if (op2Pos < op1End) { // op2Pos > op1Start && op2Pos < op1End
-            // Insert is strictly inside the delete range.
-            // Example: Doc "abcde", op1=Del(1,3) ('bcd'). op2=Ins(2,"X") ('c') -> "abXce"
-            // Transformed op1: Del(1,4) ('bXcd') (original 'b', then 'X', then 'c', 'd')
+        // Case 2: Insert occurs at the exact start of delete range  
+        else if (op2Pos == op1Start) {
+            // Delete position shifts right, but length stays the same
+            // (we don't want to delete the newly inserted text)
+            return Delete(op1Start + op2Length, op1.length)
+        }
+        // Case 3: Insert occurs inside the delete range (but not at start)
+        else if (op2Pos < op1End) {
+            // Delete position unchanged, but length increases to include inserted text
             return Delete(op1Start, op1.length + op2Length)
         }
-        // If the insert (op2) occurs after the delete (op1).
-        // The delete operation is unaffected.
-        else { // op2Pos >= op1End
+        // Case 4: Insert occurs after the delete range
+        else {
+            // Delete operation is unaffected
             return op1
         }
+    }
+
+    // Handles the transformation of a Delete operation against another Delete operation.
+    // This is the most complex case as deletes can overlap in various ways.
+    private fun transformDeleteDelete(op1: Delete, op2: Delete): Operation {
+        val op1Start = op1.position
+        val op1End = op1.position + op1.length
+        val op2Start = op2.position
+        val op2End = op2.position + op2.length
+
+        // Case 1: op1 is completely before op2
+        if (op1End <= op2Start) {
+            // op1 is unaffected by op2
+            return op1
+        }
+        
+        // Case 2: op1 is completely after op2
+        if (op1Start >= op2End) {
+            // op1's position shifts left by op2's length
+            return Delete(op1Start - op2.length, op1.length)
+        }
+        
+        // Case 3: op2 is completely contained within op1
+        if (op1Start <= op2Start && op1End >= op2End) {
+            // op1's length reduces by op2's length (the overlapping part is already deleted by op2)
+            val newLength = op1.length - op2.length
+            return if (newLength > 0) Delete(op1Start, newLength) else NoOp
+        }
+        
+        // Case 4: op1 is completely contained within op2
+        if (op2Start <= op1Start && op2End >= op1End) {
+            // op1 becomes a NoOp because everything it wanted to delete was already deleted by op2
+            return NoOp
+        }
+        
+        // Case 5: op1 and op2 overlap partially - op1 starts before op2, but they overlap
+        if (op1Start < op2Start && op1End > op2Start && op1End <= op2End) {
+            // op1 deletes only the part before op2 starts
+            val newLength = op2Start - op1Start
+            return if (newLength > 0) Delete(op1Start, newLength) else NoOp
+        }
+        
+        // Case 6: op1 and op2 overlap partially - op2 starts before op1, but they overlap  
+        if (op2Start < op1Start && op2End > op1Start && op2End < op1End) {
+            // op1 position moves to where op2 ends (adjusted for op2's deletion)
+            // and length is reduced by the overlapping part
+            val overlapLength = op2End - op1Start
+            val newPosition = op2Start // op1 now starts where op2 started
+            val newLength = op1.length - overlapLength
+            return if (newLength > 0) Delete(newPosition, newLength) else NoOp
+        }
+        
+        // Case 7: op1 and op2 are identical
+        if (op1Start == op2Start && op1.length == op2.length) {
+            // op1 becomes NoOp since op2 already deleted the same content
+            return NoOp
+        }
+        
+        // Fallback (should not reach here with correct logic above)
+        return op1
     }
 }

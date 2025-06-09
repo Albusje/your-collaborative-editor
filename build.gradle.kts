@@ -9,12 +9,13 @@ plugins {
 }
 
 allprojects {
-    group = "com.yourcompany.editor" // Common group ID for all modules
+    group = "com.sasut.editor" // Common group ID for all modules
     version = "1.0-SNAPSHOT" // Common version for all modules
 
     repositories {
         mavenCentral()
         // Add other repositories if needed, e.g., for specific Akka SNAPSHOTs or commercial versions
+        maven { url = uri("https://repo.akka.io/maven") } // Ensure Akka repo is here for all projects
     }
 }
 
