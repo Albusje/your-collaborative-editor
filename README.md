@@ -22,17 +22,53 @@ A demonstration of real-time collaborative editing built with **Kotlin + Akka + 
 ## How it Works
 
 ```
-Client A ←─┐
-           ├→ WebSocket Server → DocumentActor → Event Store
-Client B ←─┘                      ↓
-                               Broadcast to all clients
+┌─────────────────┐    WebSocket    ┌─────────────────┐
+│   Client A      │◄──────────────► │   Ktor Server   │
+│   (Browser)     │                 │                 │
+└─────────────────┘                 │                 │
+                                    │ ┌─────────────┐ │
+┌─────────────────┐    WebSocket    │ │DocumentActor│ │
+│   Client B      │◄──────────────► │ │ (Persistent)│ │
+│   (Browser)     │                 │ └─────────────┘ │
+└─────────────────┘                 │                 │
+                                    │ ┌─────────────┐ │
+┌─────────────────┐    WebSocket    │ │ Broadcast   │ │
+│   Client C      │◄──────────────► │ │ Actor       │ │
+│   (Browser)     │                 │ └─────────────┘ │
+└─────────────────┘                 └─────────────────┘
 ```
 
-## Testing
+### Accessing the Editor
+1. Open multiple browser tabs
+2. Navigate to `client/client.html`
+3. Connect to the same document ID
+4. Start typing and see real-time collaboration in action!
 
-1. Open multiple browser tabs with `client/client.html`
-2. Type in one tab, see updates in others instantly
-3. Try concurrent edits to see conflict resolution
+## 📊 Project Structure
+
+```
+realtime-editor-backend/
+├── api-server/                 # Ktor WebSocket server
+│   ├── src/main/kotlin/
+│   │   ├── routes/            # WebSocket routing
+│   │   └── actor/             # WebSocket client handlers
+│   └── build.gradle.kts
+├── backend-akka/              # Core Akka backend
+│   ├── src/main/kotlin/
+│   │   ├── actor/            # Document & Manager actors
+│   │   ├── command/          # Command messages
+│   │   ├── event/            # Event sourcing events
+│   │   └── state/            # Document state management
+│   └── build.gradle.kts
+├── core-ot/                  # Operational Transformation engine
+│   ├── src/main/kotlin/
+│   │   ├── model/           # Operation models (Insert, Delete)
+│   │   └── ot/              # OT transformation algorithms
+│   └── build.gradle.kts
+├── client/                   # Frontend client
+│   └── client.html          # HTML5 + JavaScript client
+└── build.gradle.kts         # Root build configuration
+```
 
 ## Tech Stack
 
