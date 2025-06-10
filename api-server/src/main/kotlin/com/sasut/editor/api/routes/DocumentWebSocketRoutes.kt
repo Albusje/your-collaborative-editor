@@ -8,21 +8,19 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import org.slf4j.LoggerFactory
-import java.time.Duration // Java's Duration
+import java.time.Duration
 
-// --- Akka Core Imports ---
 import akka.actor.ActorRef
 import akka.pattern.Patterns.ask
 import akka.util.Timeout
-import scala.concurrent.Future // Add missing Future import
-import scala.concurrent.duration.Duration as FiniteDurationAkka // Akka's FiniteDuration
-import scala.concurrent.ExecutionContextExecutor // Needed for Future callbacks
+import scala.concurrent.Future
+import scala.concurrent.duration.Duration as FiniteDurationAkka
+import scala.concurrent.ExecutionContextExecutor
 import scala.util.Failure
 import scala.util.Success
 import com.sasut.editor.backend.actor.WebSocketBroadcastActor
-import com.sasut.editor.api.actor.WebSocketClientHandlerActor // NEW: Import WebSocketClientHandlerActor
-import com.sasut.editor.api.actor.SetWebSocketSession // NEW: Import SetWebSocketSession command
-// --- Project-Specific Backend Imports ---
+import com.sasut.editor.api.actor.WebSocketClientHandlerActor
+import com.sasut.editor.api.actor.SetWebSocketSession
 import com.sasut.editor.backend.common.ActorSystemProvider
 import com.sasut.editor.backend.command.ClientOperation
 import com.sasut.editor.backend.command.DocumentActorRefResponse
@@ -30,17 +28,15 @@ import com.sasut.editor.backend.command.DocumentStateResponse
 import com.sasut.editor.backend.command.GetDocumentActor
 import com.sasut.editor.backend.command.GetDocumentState
 import com.sasut.editor.backend.notification.DocumentUpdate
-// --- Core OT Model Imports ---
 import com.sasut.editor.core.model.Delete
 import com.sasut.editor.core.model.Insert
 import com.sasut.editor.core.model.Operation
 import com.sasut.editor.core.model.NoOp
 import java.util.UUID
-import java.util.concurrent.CompletableFuture // Java's CompletableFuture
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-// --- DATA TRANSFER OBJECTS (DTOS) FOR WEBSOCKET COMMUNICATION ---
 @kotlinx.serialization.Serializable
 data class WebSocketOperation(
     val type: String,
@@ -62,17 +58,15 @@ data class WebSocketDocumentUpdate(
 )
 
 
-private val documentTimeout = Timeout(FiniteDurationAkka.create(15, TimeUnit.SECONDS)) // Increase timeout
+private val documentTimeout = Timeout(FiniteDurationAkka.create(15, TimeUnit.SECONDS))
 private val log = LoggerFactory.getLogger("DocumentWebSocketRoutes")
 private val json = Json { 
     ignoreUnknownKeys = true
-    encodeDefaults = true // This ensures default values are included in JSON
+    encodeDefaults = true
 }
 
-// Get Akka's default dispatcher for Future callbacks
 private val executionContext: ExecutionContextExecutor = ActorSystemProvider.system.dispatcher()
 
-// Helper function to convert Scala Future to Java CompletableFuture
 private fun <T> scalaFutureToCompletableFuture(scalaFuture: Future<T>): CompletableFuture<T> {
     val completableFuture = CompletableFuture<T>()
     scalaFuture.onComplete({ result ->
@@ -91,22 +85,17 @@ fun Route.documentWebSocketRouting() {
 
         log.info("WebSocket: Client connected to document {} with session ID {}", documentId, sessionId)
 
-        // --- NEW: Create a WebSocketClientHandlerActor for this session ---
-        val sessionActor = ActorSystemProvider.system.actorOf( // Use ActorSystemProvider.system here
-            com.sasut.editor.api.actor.WebSocketClientHandlerActor.props(documentId, ActorSystemProvider.webSocketBroadcaster), // Fully qualify to avoid import clash
+        val sessionActor = ActorSystemProvider.system.actorOf(
+            com.sasut.editor.api.actor.WebSocketClientHandlerActor.props(documentId, ActorSystemProvider.webSocketBroadcaster),
             "ws-session-handler-$sessionId"
         )
-        // Send the Ktor WebSocketSession object to its corresponding Akka actor
         sessionActor.tell(com.sasut.editor.api.actor.SetWebSocketSession(this), ActorRef.noSender())
-        // --- END NEW ---
 
         var documentActor: ActorRef? = null
         try {
-            // --- SIMPLIFIED: Use helper function for Future conversion ---
             val actorRefScalaFuture = ask(ActorSystemProvider.documentManager, GetDocumentActor(documentId, sessionId), documentTimeout)
             val response = scalaFutureToCompletableFuture(actorRefScalaFuture)
                 .get(documentTimeout.duration().toMillis(), TimeUnit.MILLISECONDS)
-            // --- END SIMPLIFIED ---
 
             if (response is DocumentActorRefResponse) {
                 documentActor = response.actorRef
@@ -122,16 +111,14 @@ fun Route.documentWebSocketRouting() {
                 return@webSocket
             }
 
-            // --- SIMPLIFIED: Use helper function for Future conversion ---
             val initialStateScalaFuture = ask(documentActor, GetDocumentState(sessionId), documentTimeout)
             val initialStateResponse = scalaFutureToCompletableFuture(initialStateScalaFuture)
                 .get(documentTimeout.duration().toMillis(), TimeUnit.MILLISECONDS)
-            // --- END SIMPLIFIED ---
 
             if (initialStateResponse is DocumentStateResponse) {
                 send(json.encodeToString(
                     WebSocketDocumentUpdate(
-                        type = "documentUpdate", // Explicitly set the type
+                        type = "documentUpdate",
                         documentId = documentId,
                         newContent = initialStateResponse.content,
                         newVersion = initialStateResponse.version

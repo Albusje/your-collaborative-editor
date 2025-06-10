@@ -170,9 +170,26 @@
         sendOperation('insert', pos, text, null);
     };
 
-    sendDelete.onclick = () => {
+    sendDeleteButton.onclick = () => {
         const pos = parseInt(deletePosInput.value);
         const len = parseInt(deleteLengthInput.value);
+        const currentContent = editor.value;
+        
+        // Validate delete operation before sending
+        if (pos < 0) {
+            log(`*** DELETE BUTTON ERROR: Invalid position ${pos} (must be >= 0) ***`);
+            return;
+        }
+        if (len <= 0) {
+            log(`*** DELETE BUTTON ERROR: Invalid length ${len} (must be > 0) ***`);
+            return;
+        }
+        if (pos + len > currentContent.length) {
+            log(`*** DELETE BUTTON ERROR: Delete range ${pos}+${len}=${pos+len} exceeds document length ${currentContent.length} ***`);
+            return;
+        }
+        
+        log(`*** DELETE BUTTON: Validated delete at pos=${pos}, len=${len}, docLen=${currentContent.length} ***`);
         sendOperation('delete', pos, null, len);
     };
 
@@ -185,7 +202,14 @@
         
         // Update position inputs
         insertPosInput.value = cursorPos;
-        deletePosInput.value = cursorPos;
+        
+        // For delete operation, adjust position if cursor is at end
+        if (cursorPos >= currentContent.length && currentContent.length > 0) {
+            // If cursor is at or beyond the end, set delete position to delete the last character
+            deletePosInput.value = currentContent.length - 1;
+        } else {
+            deletePosInput.value = cursorPos;
+        }
         
         // Calculate and send operations based on content changes
         handleContentChange(lastContent, currentContent, cursorPos);
@@ -193,8 +217,18 @@
     });
     
     editor.addEventListener('click', () => {
-        insertPosInput.value = editor.selectionStart;
-        deletePosInput.value = editor.selectionStart;
+        const cursorPos = editor.selectionStart;
+        const currentContent = editor.value;
+        
+        insertPosInput.value = cursorPos;
+        
+        // For delete operation, adjust position if cursor is at end
+        if (cursorPos >= currentContent.length && currentContent.length > 0) {
+            // If cursor is at or beyond the end, set delete position to delete the last character
+            deletePosInput.value = currentContent.length - 1;
+        } else {
+            deletePosInput.value = cursorPos;
+        }
     });
     
     // Function to calculate operations from content changes
@@ -213,11 +247,22 @@
         } else if (newContent.length < oldContent.length) {
             // Content was deleted - find where it was deleted
             let deletePos = 0;
-            while (deletePos < newContent.length && oldContent[deletePos] === newContent[deletePos]) {
+            
+            // Find the first differing position by comparing from the start
+            while (deletePos < newContent.length && deletePos < oldContent.length && 
+                   oldContent[deletePos] === newContent[deletePos]) {
                 deletePos++;
             }
+            
             const deleteLen = oldContent.length - newContent.length;
-            sendOperation('delete', deletePos, null, deleteLen);
+            
+            // Validate the delete operation before sending
+            if (deletePos + deleteLen <= oldContent.length && deletePos >= 0) {
+                log(`*** DELETE CALC: pos=${deletePos}, len=${deleteLen}, oldLen=${oldContent.length}, newLen=${newContent.length} ***`);
+                sendOperation('delete', deletePos, null, deleteLen);
+            } else {
+                log(`*** DELETE CALC ERROR: pos=${deletePos}, len=${deleteLen}, oldLen=${oldContent.length} - Invalid delete range ***`);
+            }
         }
         // For more complex changes (like replacing text), this would need more sophisticated diff logic
     }

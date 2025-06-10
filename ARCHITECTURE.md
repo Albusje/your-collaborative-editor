@@ -30,7 +30,7 @@ This collaborative text editor implements a **distributed, event-sourced archite
 │                    Ktor WebSocket Server                    │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
-│  │ DocumentWebSocket│  │WebSocketClientH │  │ WebSocket    │ │
+│  │DocumentWebSocket│  │WebSocketClientH │  │ WebSocket    │ │
 │  │ Routes          │  │ andlerActor     │  │ Broadcast    │ │
 │  │                 │  │                 │  │ Actor        │ │
 │  └─────────────────┘  └─────────────────┘  └──────────────┘ │
