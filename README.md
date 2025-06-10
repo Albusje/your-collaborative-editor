@@ -23,7 +23,7 @@ A demonstration of real-time collaborative editing built with **Kotlin + Akka + 
 
 ```
 Client A ←─┐
-          ├→ WebSocket Server → DocumentActor → Event Store
+           ├→ WebSocket Server → DocumentActor → Event Store
 Client B ←─┘                      ↓
                                Broadcast to all clients
 ```
