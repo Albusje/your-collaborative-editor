@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Editor Client</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #editor { width: 600px; height: 300px; border: 1px solid #ccc; padding: 10px; font-size: 16px; margin-bottom: 10px; resize: vertical; overflow-y: scroll; }
+        #controls { margin-bottom: 10px; }
+        #output { width: 600px; height: 150px; border: 1px solid #eee; background-color: #f9f9f9; padding: 10px; font-size: 14px; overflow-y: scroll; white-space: pre-wrap; }
+        input[type="text"] { width: 150px; padding: 5px; margin-right: 5px; }
+        button { padding: 8px 15px; cursor: pointer; }
+    </style>
+</head>
+<body>
+<h1>Collaborative Editor</h1>
+
+<div>
+    Document ID: <input type="text" id="documentIdInput" value="my-first-doc">
+    Client ID: <input type="text" id="clientIdInput" value="client-A">
+    <button id="connectButton">Connect WebSocket</button>
+    <button id="disconnectButton" disabled>Disconnect</button>
+</div>
+<p>Status: <span id="status">Disconnected</span></p>
+
+<textarea id="editor" placeholder="Start typing here..."></textarea>
+<div id="controls">
+    Insert Pos: <input type="number" id="insertPos" value="0">
+    Insert Text: <input type="text" id="insertText" value="hello">
+    <button id="sendInsert">Send Insert</button>
+    <br><br>
+    Delete Pos: <input type="number" id="deletePos" value="0">
+    Delete Length: <input type="number" id="deleteLength" value="1">
+    <button id="sendDelete">Send Delete</button>
+</div>
+
+<h2>Raw WebSocket Output</h2>
+<pre id="output"></pre>
+
+<script>
+    let ws;
+    let currentDocumentId = "my-first-doc";
+    let currentClientId = "client-A";
+    let currentDocumentVersion = 0; // Client's understanding of the document version
+    let requestIdCounter = 0; // To generate unique request IDs
+    let lastContent = ""; // Track last known content
+    let isUpdatingFromServer = false; // Flag to prevent recursive updates
+    let pendingOperation = false; // Flag to prevent sending operations too quickly
+
+    const statusSpan = document.getElementById('status');
+    const editor = document.getElementById('editor');
+    const output = document.getElementById('output');
+    const connectButton = document.getElementById('connectButton');
+    const disconnectButton = document.getElementById('disconnectButton');
+    const documentIdInput = document.getElementById('documentIdInput');
+    const clientIdInput = document.getElementById('clientIdInput');
+    const sendInsertButton = document.getElementById('sendInsert');
+    const insertPosInput = document.getElementById('insertPos');
+    const insertTextInput = document.getElementById('insertText');
+    const sendDeleteButton = document.getElementById('sendDelete');
+    const deletePosInput = document.getElementById('deletePos');
+    const deleteLengthInput = document.getElementById('deleteLength');
+
+    function log(message) {
+        output.textContent += message + '\n';
+        output.scrollTop = output.scrollHeight; // Auto-scroll
+    }
+
+    connectButton.onclick = () => {
+        currentDocumentId = documentIdInput.value;
+        currentClientId = clientIdInput.value;
+        const wsUrl = `ws://localhost:8080/ws/document/${currentDocumentId}`;
+        log(`Attempting to connect to ${wsUrl}...`);
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = (event) => {
+            statusSpan.textContent = 'Connected';
+            connectButton.disabled = true;
+            disconnectButton.disabled = false;
+            log('WebSocket connection opened.');
+            
+            // Reset content tracking
+            lastContent = "";
+            currentDocumentVersion = 0;
+        };
+
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            log(`Received: ${JSON.stringify(message, null, 2)}`);
+            log(`*** Message type: "${message.type}" ***`);
+
+            if (message.type === 'documentUpdate') {
+                isUpdatingFromServer = true;
+                const cursorPos = editor.selectionStart;
+                
+                // Force update the textarea
+                editor.value = message.newContent;
+                lastContent = message.newContent;
+                
+                // Update version - this is critical!
+                const oldVersion = currentDocumentVersion;
+                currentDocumentVersion = message.newVersion;
+                pendingOperation = false; // Allow next operation
+                
+                // Restore cursor position (approximately)
+                try {
+                    editor.setSelectionRange(cursorPos, cursorPos);
+                } catch(e) {
+                    // Ignore cursor position errors
+                }
+                isUpdatingFromServer = false;
+                
+                log(`*** VERSION UPDATE: ${oldVersion} -> ${currentDocumentVersion} ***`);
+                log(`Editor updated to version ${currentDocumentVersion}. Content: "${message.newContent}"`);
+            }
+        };
+
+        ws.onclose = (event) => {
+            statusSpan.textContent = `Disconnected (Code: ${event.code}, Reason: ${event.reason})`;
+            connectButton.disabled = false;
+            disconnectButton.disabled = true;
+            log('WebSocket connection closed.');
+        };
+
+        ws.onerror = (event) => {
+            statusSpan.textContent = 'Error occurred!';
+            log('WebSocket error: ' + event.message);
+        };
+    };
+
+    disconnectButton.onclick = () => {
+        if (ws) {
+            ws.close();
+        }
+    };
+
+    function sendOperation(type, pos, text, len) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            log('WebSocket not connected. Please connect first.');
+            return;
+        }
+        
+        if (pendingOperation) {
+            log('Operation pending, skipping...');
+            return;
+        }
+
+        const requestId = `${currentClientId}-${++requestIdCounter}`;
+        const operation = {
+            type: type,
+            position: pos,
+            text: text,
+            length: len,
+            clientVersion: currentDocumentVersion, // Send the client's current version
+            clientId: currentClientId,
+            requestId: requestId
+        };
+
+        pendingOperation = true;
+        log(`*** SENDING with clientVersion ${currentDocumentVersion} ***`);
+        log(`Sending: ${JSON.stringify(operation, null, 2)}`);
+        ws.send(JSON.stringify(operation));
+    }
+
+    sendInsertButton.onclick = () => {
+        const pos = parseInt(insertPosInput.value);
+        const text = insertTextInput.value;
+        sendOperation('insert', pos, text, null);
+    };
+
+    sendDelete.onclick = () => {
+        const pos = parseInt(deletePosInput.value);
+        const len = parseInt(deleteLengthInput.value);
+        sendOperation('delete', pos, null, len);
+    };
+
+    // Real-time typing support
+    editor.addEventListener('input', () => {
+        if (isUpdatingFromServer) return; // Don't process server updates
+        
+        const currentContent = editor.value;
+        const cursorPos = editor.selectionStart;
+        
+        // Update position inputs
+        insertPosInput.value = cursorPos;
+        deletePosInput.value = cursorPos;
+        
+        // Calculate and send operations based on content changes
+        handleContentChange(lastContent, currentContent, cursorPos);
+        lastContent = currentContent;
+    });
+    
+    editor.addEventListener('click', () => {
+        insertPosInput.value = editor.selectionStart;
+        deletePosInput.value = editor.selectionStart;
+    });
+    
+    // Function to calculate operations from content changes
+    function handleContentChange(oldContent, newContent, cursorPos) {
+        if (oldContent === newContent) return;
+        
+        // More accurate diff-based approach
+        if (newContent.length > oldContent.length) {
+            // Content was inserted - find where it was inserted
+            let insertPos = 0;
+            while (insertPos < oldContent.length && oldContent[insertPos] === newContent[insertPos]) {
+                insertPos++;
+            }
+            const insertedText = newContent.slice(insertPos, insertPos + (newContent.length - oldContent.length));
+            sendOperation('insert', insertPos, insertedText, null);
+        } else if (newContent.length < oldContent.length) {
+            // Content was deleted - find where it was deleted
+            let deletePos = 0;
+            while (deletePos < newContent.length && oldContent[deletePos] === newContent[deletePos]) {
+                deletePos++;
+            }
+            const deleteLen = oldContent.length - newContent.length;
+            sendOperation('delete', deletePos, null, deleteLen);
+        }
+        // For more complex changes (like replacing text), this would need more sophisticated diff logic
+    }
+</script>
+</body>
+</html>

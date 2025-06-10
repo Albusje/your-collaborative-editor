@@ -1,36 +1,55 @@
 plugins {
-    // This module only needs the Kotlin JVM plugin
     kotlin("jvm")
-    // If using Ktor, add Ktor plugin here:
-    // id("io.ktor.jvm") version "2.3.9" // Check for latest Ktor version
+    id("io.ktor.plugin") version "3.1.3"
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.22"
+    id("application")
 }
 
 dependencies {
-    // Depends on the backend-akka module
     implementation(project(":backend-akka"))
+    implementation(project(":core-ot"))
 
-    // Ktor dependencies (if chosen)
-    val ktorVersion = "2.3.9" // Check for the latest Ktor version
-    implementation("io.ktor:ktor-server-core-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty-jvm:$ktorVersion") // Or other engine like CIO
-    implementation("io.ktor:ktor-server-websockets-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion") // For JSON/other content types
-    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion") // For kotlinx.serialization
+    val ktorVersion = "3.1.3"
 
-    // Logging (optional but recommended)
-    implementation("ch.qos.logback:logback-classic:1.5.6") // Check for latest version
+    implementation("io.ktor:ktor-server-core")
+    implementation("io.ktor:ktor-server-netty")
+    implementation("io.ktor:ktor-server-websockets")
+    implementation("io.ktor:ktor-server-content-negotiation")
+    implementation("io.ktor:ktor-serialization-kotlinx-json")
+
+    val akkaVersion = "2.10.5"
+    val scalaBinVersion = "2.13"
+
+    // Logging
+    implementation("ch.qos.logback:logback-classic:1.5.6")
+
+    // Core Akka dependencies for API server
+    implementation("com.typesafe.akka:akka-actor_$scalaBinVersion:$akkaVersion")
+    implementation("com.typesafe.akka:akka-stream_$scalaBinVersion:$akkaVersion")
+    implementation("com.typesafe.akka:akka-slf4j_$scalaBinVersion:$akkaVersion")
+    
+    // Add Cassandra persistence dependencies since api-server uses backend actors
+    implementation("com.typesafe.akka:akka-persistence_$scalaBinVersion:$akkaVersion")
+    implementation("com.typesafe.akka:akka-persistence-cassandra_$scalaBinVersion:1.3.2")
 
     // Testing dependencies
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.11.0")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.0")
+    testImplementation("org.junit.jupiter:junit-jupiter-engine:5.11.0")
+    testImplementation("io.ktor:ktor-server-test-host")
 }
 
-tasks.test {
-    useJUnitPlatform()
+application {
+    mainClass.set("com.sasut.editor.api.ApplicationKt")
 }
 
-// Ktor-specific task if you added the Ktor plugin
-// application {
-//     mainClass.set("com.yourcompany.editor.api.ApplicationKt") // Or your main class name
-// }
+repositories {
+    maven {
+        url = uri("https://maven.pkg.jetbrains.space/public/p/ktor/eap")
+    }
+    maven {
+        url = uri("https://maven.pkg.jetbrains.space/kotlin/p/kotlin/dev")
+    }
+    mavenCentral()
+    maven { url = uri("https://repo.akka.io/maven") }
+}
