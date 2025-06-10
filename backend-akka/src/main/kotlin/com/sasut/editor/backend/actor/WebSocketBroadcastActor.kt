@@ -3,7 +3,7 @@ package com.sasut.editor.backend.actor
 import akka.actor.AbstractActor
 import akka.actor.ActorRef
 import akka.actor.Props
-import akka.actor.Terminated // To watch WebSocket session handlers
+import akka.actor.Terminated
 import org.slf4j.LoggerFactory
 import com.sasut.editor.backend.notification.DocumentUpdate
 import java.util.concurrent.ConcurrentHashMap
@@ -75,7 +75,7 @@ class WebSocketBroadcastActor : AbstractActor() {
                     log.warn("WebSocketBroadcastActor: Watched unknown actor {} terminated (not found in active subscriptions).", terminatedActorRef.path())
                 }
             }
-            // --- CRITICAL: Handle DocumentUpdate messages from EventStream ---
+            // Handle DocumentUpdate messages from EventStream
             .match(DocumentUpdate::class.java) { update ->
                 log.debug("WebSocketBroadcastActor: Received DocumentUpdate for document {}: Version {}. Fanning out.", update.documentId, update.newVersion)
                 val sessionsForDocument = documentSubscribers[update.documentId]

@@ -39,7 +39,6 @@ data class Delete(val position: Int, val length: Int) : Operation {
     }
 }
 
-// Represents a no-op operation (useful in transformations where an operation becomes irrelevant)
 object NoOp : Operation {
     override fun apply(document: String): String = document
 }

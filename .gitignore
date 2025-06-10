@@ -43,3 +43,5 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+/hs_err_pid1800.log
+/hs_err_pid8644.log

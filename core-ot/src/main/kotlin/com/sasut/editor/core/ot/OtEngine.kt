@@ -30,7 +30,6 @@ object OtEngine {
         }
     }
 
-    // --- Private Transformation Helper Functions ---
 
     // Handles the transformation of an Insert operation against another Insert operation.
     // If op1.position < op2.position, op1 is unaffected.
@@ -40,7 +39,7 @@ object OtEngine {
         return when {
             op1.position < op2.position -> op1
             op1.position > op2.position -> op1.copy(position = op1.position + op2.text.length)
-            else -> op1 // Tie-breaking: op1 appears before op2
+            else -> op1
         }
     }
 
@@ -80,7 +79,7 @@ object OtEngine {
     }
 
     // Handles the transformation of a Delete operation against another Delete operation.
-    // This is the most complex case as deletes can overlap in various ways.
+    // Functional but, here deletes can overlap in various ways....
     private fun transformDeleteDelete(op1: Delete, op2: Delete): Operation {
         val op1Start = op1.position
         val op1End = op1.position + op1.length

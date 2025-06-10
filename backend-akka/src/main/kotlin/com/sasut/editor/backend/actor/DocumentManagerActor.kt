@@ -42,7 +42,7 @@ class DocumentManagerActor : AbstractActor() {
                     // Use ActorSystem's context to create child actors
                     val newActor = context.actorOf(DocumentActor.props(documentId), "document-$documentId")
 
-                    // IMPORTANT: Watch the new actor. If it dies, we want to know so we can remove it from our map.
+                    // IMPORTANT: If new Actor dies, we want to know so we can remove it from our map.
                     context.watch(newActor)
 
                     documentActors[documentId] = newActor // Store the new actor's reference
@@ -59,10 +59,6 @@ class DocumentManagerActor : AbstractActor() {
                 if (terminatedDocumentId != null) {
                     documentActors.remove(terminatedDocumentId)
                     log.warn("DocumentManager: Document actor {} for document {} terminated. Removed from registry.", terminatedActorRef.path(), terminatedDocumentId)
-                    // In a a more robust production system, you might:
-                    // 1. Log extensively
-                    // 2. Potentially re-spawn the actor (e.g., using a supervisor strategy or a separate actor management pattern)
-                    // 3. Notify connected clients that the document is temporarily unavailable.
                 } else {
                     log.warn("DocumentManager: Unknown actor {} (not in our registry) terminated.", terminatedActorRef.path())
                 }

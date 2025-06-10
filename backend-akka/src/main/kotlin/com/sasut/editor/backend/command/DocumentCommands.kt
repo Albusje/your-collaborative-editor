@@ -21,7 +21,6 @@ data class DocumentStateResponse(
     val version: Int
 )
 
-// === ADD THIS CLASS (DocumentActorRefResponse) ===
 // Message to request an ActorRef for a specific document from DocumentManagerActor
 data class GetDocumentActor(val documentId: String, val requestId: String = "")
 
@@ -31,4 +30,3 @@ data class DocumentActorRefResponse(
     val actorRef: ActorRef?, // ActorRef from Akka
     val requestId: String = ""
 )
-// === END ADDITION ===
