@@ -167,14 +167,6 @@ This project demonstrates:
 - [Architecture Documentation](ARCHITECTURE.md)
 - [API Reference](API.md)
 
-## 🤝 Contributing
-
-This is a demonstration project showcasing collaborative editing technology. Feel free to:
-
-- Add new features (user cursors, authentication, etc.)
-- Implement different OT algorithms
-- Add persistence backends
-- Improve the client UI
 
 ## 📄 License
 
