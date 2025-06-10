@@ -9,7 +9,6 @@ dependencies {
     implementation(project(":backend-akka"))
     implementation(project(":core-ot"))
 
-    val ktorVersion = "3.1.3"
 
     implementation("io.ktor:ktor-server-core")
     implementation("io.ktor:ktor-server-netty")
@@ -20,19 +19,15 @@ dependencies {
     val akkaVersion = "2.10.5"
     val scalaBinVersion = "2.13"
 
-    // Logging
     implementation("ch.qos.logback:logback-classic:1.5.6")
 
-    // Core Akka dependencies for API server
     implementation("com.typesafe.akka:akka-actor_$scalaBinVersion:$akkaVersion")
     implementation("com.typesafe.akka:akka-stream_$scalaBinVersion:$akkaVersion")
     implementation("com.typesafe.akka:akka-slf4j_$scalaBinVersion:$akkaVersion")
     
-    // Add Cassandra persistence dependencies since api-server uses backend actors
     implementation("com.typesafe.akka:akka-persistence_$scalaBinVersion:$akkaVersion")
     implementation("com.typesafe.akka:akka-persistence-cassandra_$scalaBinVersion:1.3.2")
 
-    // Testing dependencies
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.11.0")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.11.0")
